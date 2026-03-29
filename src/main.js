@@ -83,40 +83,41 @@ function splitFloat64(x) {
 function computeOrbit() {
   const maxIter = Math.round(uniforms.iMaxIter.value);
 
-  // Z_0 = (0, 0)
-  orbitData[0] = 0;  orbitData[1] = 0;  orbitData[2] = 0;  orbitData[3] = 0;
+  orbitData[0] = 0; orbitData[1] = 0; orbitData[2] = 0; orbitData[3] = 0;
   let zx = new Decimal(0), zy = new Decimal(0);
-  let n  = 1;
+  let n = 1;
 
-  const limit = Math.min(maxIter, ORBIT_SIZE - 1);
+ const limit = Math.min(maxIter + 200, ORBIT_SIZE - 1);;
+
   for (let i = 0; i < limit; i++) {
     const zx2 = zx.times(zx);
     const zy2 = zy.times(zy);
-    if (zx2.plus(zy2).greaterThan(4096)) break;
+    if (zx2.plus(zy2).greaterThan(1024)) break;
 
     const nzx = zx2.minus(zy2).plus(cx);
     zy = zx.times(zy).times(2).plus(cy);
     zx = nzx;
 
-    // Store as float64 hi+lo pairs: RGBA = (Zx_hi, Zx_lo, Zy_hi, Zy_lo)
     const [zxHi, zxLo] = splitFloat64(zx.toNumber());
     const [zyHi, zyLo] = splitFloat64(zy.toNumber());
-    orbitData[n * 4]     = zxHi;
-    orbitData[n * 4 + 1] = zxLo;
-    orbitData[n * 4 + 2] = zyHi;
-    orbitData[n * 4 + 3] = zyLo;
+
+    const idx = n * 4;
+    orbitData[idx]     = zxHi;
+    orbitData[idx + 1] = zxLo;
+    orbitData[idx + 2] = zyHi;
+    orbitData[idx + 3] = zyLo;
     n++;
   }
 
   uniforms.iOrbitLen.value = n;
-  orbitTex.needsUpdate     = true;
+  orbitTex.needsUpdate = true;
 }
 
 // ─── Update everything after center / zoom change ─────────────────────────────
 
 function updateAll() {
   uniforms.iViewScale.value = 3.0 / zoom;
-  uniforms.iMaxIter.value   = Math.min(512, Math.floor(100 + 15 * Math.log2(zoom + 1)));
+  uniforms.iMaxIter.value = Math.min(512, Math.floor(200 + 30 * Math.log2(zoom + 1)));
   computeOrbit();
   updateUI();
 }
