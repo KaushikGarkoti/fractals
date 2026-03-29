@@ -1,13 +1,21 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import fragmentShader from '../shaders/mandelbulb.glsl?raw';
-import textureUrl from '../textures/TCom_Metal_SteelDamascus_header.jpg?url';
-import hdrUrl from '../textures/tree_lined_driveway_2k.hdr?url';
+import albedoUrl  from '../textures/coast_sand_rocks_02_2k/textures/coast_sand_rocks_02.webp?url';
+import normalUrl  from '../textures/coast_sand_rocks_02_2k/textures/coast_sand_rocks_02_nor_gl_2k.jpg?url';
+import roughUrl   from '../textures/coast_sand_rocks_02_2k/textures/coast_sand_rocks_02_rough_2k.jpg?url';
+import hdrUrl     from '../textures/tree_lined_driveway_2k.hdr?url';
 
-const texture = new THREE.TextureLoader().load(textureUrl, (tex) => {
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.needsUpdate = true;
-});
+function loadTex(url) {
+  return new THREE.TextureLoader().load(url, (tex) => {
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.needsUpdate = true;
+  });
+}
+
+const albedoMap    = loadTex(albedoUrl);
+const normalMap    = loadTex(normalUrl);
+const roughnessMap = loadTex(roughUrl);
 
 // 1×1 black placeholder — replaced once HDR finishes loading
 const envMap = new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1, THREE.RGBAFormat);
@@ -40,6 +48,9 @@ const state = {
   power:      8.0,
   colorShift: 0.0,
   mode:       0,        // 0 = Mandelbulb, 1 = Julia 3D
+  morphTime:  0.0,
+  morphing:   true,
+  morphSpeed: 1.0,      // multiplier: 0.25=slow, 1=normal, 4=fast
 };
 
 const uniforms = {
@@ -47,7 +58,9 @@ const uniforms = {
   iResolution: { value: new THREE.Vector2() },
   iPower:      { value: state.power },
   iColorShift: { value: state.colorShift },
-  iTexture:    { value: texture },
+  iAlbedoMap:    { value: albedoMap },
+  iNormalMap:    { value: normalMap },
+  iRoughnessMap: { value: roughnessMap },
   iMode:       { value: 0 },
   iJuliaC:     { value: new THREE.Vector3() },
   iEnvMap:     { value: envMap },
@@ -107,6 +120,17 @@ export default {
 
     updateCamera(dt);
 
+    if (state.morphing) {
+      state.morphTime += dt * state.morphSpeed;
+      const t = state.morphTime;
+      // sum of sines at irrational ratios — never repeats, always drifting
+      // centered at 6, amplitude ±2.5 → range [3.5, 8.5]
+      const drift = Math.sin(t * 0.11)        * 0.8
+                  + Math.sin(t * 0.17 + 1.3)  * 0.4
+                  + Math.sin(t * 0.29 + 2.7)  * 0.2;
+      state.power = 7.5 + drift; // range [6.5, 8.5] — stays in "solid ball" regime
+    }
+
     uniforms.iPower.value      = state.power;
     uniforms.iColorShift.value = state.colorShift;
     uniforms.iMode.value       = state.mode;
@@ -139,8 +163,13 @@ export default {
   },
 
   onKey(key) {
-    if (key === 'w') { state.power = Math.min(12.0, state.power + 0.5); return true; }
-    if (key === 'q') { state.power = Math.max(2.0,  state.power - 0.5); return true; }
+    if (key === 'p') { state.morphing = !state.morphing; return true; }
+    if (key === 'e') { state.morphSpeed = Math.min(8.0, state.morphSpeed * 2); return true; }
+    if (key === 'r') { state.morphSpeed = Math.max(0.125, state.morphSpeed / 2); return true; }
+    if (!state.morphing) {
+      if (key === 'w') { state.power = Math.min(12.0, state.power + 0.5); return true; }
+      if (key === 'q') { state.power = Math.max(2.0,  state.power - 0.5); return true; }
+    }
     if (key === 'c') { state.colorShift = fract(state.colorShift + 0.1); return true; }
     if (key === 'j') {
       state.mode = state.mode === 0 ? 1 : 0;
@@ -171,7 +200,10 @@ export default {
       <span class="dim">Mode</span>
       <span class="val">${state.mode === 0 ? 'Mandelbulb' : 'Julia 3D'}</span> <span class="dim">[J]</span><br>
       <span class="dim">Power</span>
-      <span class="val">${state.power.toFixed(1)}</span> <span class="dim">[W/Q]</span><br>
+      <span class="val">${state.power.toFixed(2)}</span>
+      <span class="dim">${state.morphing ? '[P] stop' : '[P] start'}</span><br>
+      <span class="dim">Morph speed</span>
+      <span class="val">${state.morphSpeed.toFixed(2)}×</span> <span class="dim">[E/R]</span><br>
       <span class="dim">Color</span>
       <span class="val">${state.colorShift.toFixed(2)}</span> <span class="dim">[C]</span><br>
       <span class="dim">Zoom</span>
