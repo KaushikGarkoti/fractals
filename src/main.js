@@ -5,12 +5,14 @@ import mandelbrot from './fractals/mandelbrot.js';
 import sierpinski from './fractals/sierpinski.js';
 import julia from './fractals/julia';
 import juliaWarp from './fractals/juliaWarp';
-import domainWarp from './patterns/domainWarp';
+import domainWarp  from './patterns/domainWarp';
+import waveField   from './patterns/waveField';
+import mandelbulb  from './patterns/mandelbulb';
 
 // ─── Registries ───────────────────────────────────────────────────────────────
 
 const FRACTALS  = [mandelbrot, sierpinski, julia, juliaWarp];
-const PATTERNS  = [domainWarp]; // domain warp, interference, etc. go here
+const PATTERNS  = [domainWarp, waveField, mandelbulb]; // domain warp, interference, etc. go here
 
 const ALL = [...FRACTALS, ...PATTERNS];
 
