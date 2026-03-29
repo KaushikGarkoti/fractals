@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mandelbrot — GPU Renderer</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+    }
+
+    canvas { display: block; }
+
+    #ui {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      color: rgba(255, 255, 255, 0.75);
+      font-size: 12px;
+      line-height: 1.8;
+      pointer-events: none;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+      user-select: none;
+    }
+
+    #ui .title {
+      font-size: 14px;
+      font-weight: bold;
+      color: rgba(255, 255, 255, 0.95);
+      margin-bottom: 4px;
+      letter-spacing: 1px;
+    }
+
+    #ui .sep {
+      border-top: 1px solid rgba(255,255,255,0.2);
+      margin: 6px 0;
+    }
+
+    #ui .dim { color: rgba(255,255,255,0.4); }
+    #ui .val { color: rgba(120, 220, 255, 0.9); }
+
+    #fps {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      color: rgba(255,255,255,0.4);
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui"></div>
+  <div id="fps"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
