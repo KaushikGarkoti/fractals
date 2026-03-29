@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mandelbrot — GPU Renderer</title>
+  <title>Fractal Explorer</title>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -52,11 +52,64 @@
       font-size: 12px;
       pointer-events: none;
     }
+
+    /* ── Fractal selector ── */
+    #selector {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      padding: 6px 14px;
+      backdrop-filter: blur(6px);
+    }
+
+    #selector label {
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    #fractal-select {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: rgba(120, 220, 255, 0.9);
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 18px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(120,220,255,0.6)'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0px center;
+    }
+
+    #fractal-select option {
+      background: #111;
+      color: rgba(120, 220, 255, 0.9);
+    }
   </style>
 </head>
 <body>
   <div id="ui"></div>
   <div id="fps"></div>
+
+  <div id="selector">
+    <label>Fractal</label>
+    <select id="fractal-select"></select>
+  </div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

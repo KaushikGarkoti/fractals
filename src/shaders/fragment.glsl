@@ -100,16 +100,44 @@ void main() {
   // Coloring
   vec3 col;
 
-  if (inside) {
-    col = vec3(0.0); // 🖤 interior = black
+  if (iColorPalette > 2.5) {
+    // ── Radiance palette ──────────────────────────────────────────────────────
+    // Interior: deep red orbit-trap glow. Exterior: teal boundary halo + orange mid.
+
+    if (inside) {
+      // minTrap = min |z|² visited during orbit → small near center of attracting cycle
+      float trap = sqrt(minTrap);
+      float glow = exp(-trap * 4.5);           // bright at center, dark near boundary
+
+      col  = vec3(glow * 1.1, glow * 0.05, glow * 0.02);          // crimson core
+      col += vec3(0.0, 0.014, 0.022) * (1.0 - glow * 0.6);        // dark teal ambient
+    } else {
+      float t    = smoothIt / iMaxIter;        // 0 = far exterior, 1 = near boundary
+      float band = 0.5 + 0.5 * cos(smoothIt * 0.85);
+
+      // Teal halo: concentrated right at the boundary (high t)
+      vec3  teal   = vec3(0.08, 0.80, 0.72) * pow(t, 2.5) * 3.2;
+
+      // Orange-copper mid-range with iteration banding
+      float mid    = t * (1.0 - t) * 4.0;     // bell curve, peaks at t = 0.5
+      vec3  orange = vec3(0.92, 0.28, 0.04) * mid * 1.8 * band;
+
+      col = teal + orange;
+    }
+
   } else {
-    float t = smoothIt / iMaxIter;
+    // ── Standard cospalette path ──────────────────────────────────────────────
+    if (inside) {
+      col = vec3(0.0);
+    } else {
+      float t = smoothIt / iMaxIter;
 
-    vec3 wide = getColor(t * 3.5 + iTime * 0.02, iColorPalette);
-    vec3 fine = getColor(t * 15.0, iColorPalette);
+      vec3 wide = getColor(t * 3.5 + iTime * 0.02, iColorPalette);
+      vec3 fine = getColor(t * 15.0,               iColorPalette);
 
-    col = mix(wide, fine, 0.28);
-    col *= 0.55 + 0.45 * cos(smoothIt * 0.85);
+      col = mix(wide, fine, 0.28);
+      col *= 0.55 + 0.45 * cos(smoothIt * 0.85);
+    }
   }
 
   // vignette + gamma (unchanged)
