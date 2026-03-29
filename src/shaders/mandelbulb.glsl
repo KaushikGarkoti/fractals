@@ -2,85 +2,102 @@ precision highp float;
 
 uniform vec2  iResolution;
 uniform float iTime;
-uniform float iPower;       // bulb power (8 = classic), W/Q key
-uniform float iMaxDist;     // max raymarch distance
-uniform float iColorShift;  // C key palette shift
+uniform float iPower;
+uniform float iColorShift;
+uniform sampler2D iTexture;
+uniform int   iMode;
+uniform vec3  iJuliaC;
+uniform vec3  iCamPos;
+uniform vec3  iCamRight;
+uniform vec3  iCamUp;
+uniform vec3  iCamForward;
+uniform sampler2D iEnvMap;
 
 #define PI  3.14159265359
 #define TAU 6.28318530718
 
-#define MAX_STEPS  96
-#define SURF_DIST  0.0005
-#define MAX_DIST   12.0
+#define MAX_STEPS  192
+#define SURF_DIST  0.0001
+#define MAX_DIST   14.0
 
-// ─── rotation helpers ──────────────────────────────────────────────────────
+// ─── HDR sampling ─────────────────────────────────────────────────────────
 
-mat2 rot2(float a) { float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+vec3 sampleHDR(vec3 dir) {
+  vec3 d = normalize(dir);
+  float u = fract(atan(d.z, d.x) / TAU + 0.5);
+  float v = asin(clamp(d.y, -1.0, 1.0)) / PI + 0.5;
+  return texture2D(iEnvMap, vec2(u, v)).rgb;
+}
 
-vec3 rotX(vec3 p, float a) { p.yz = rot2(a) * p.yz; return p; }
-vec3 rotY(vec3 p, float a) { p.xz = rot2(a) * p.xz; return p; }
-vec3 rotZ(vec3 p, float a) { p.xy = rot2(a) * p.xy; return p; }
+// ─── noise for micro-variation ────────────────────────────────────────────
 
-// ─── Mandelbulb distance estimator ────────────────────────────────────────
-// returns vec2(distance, orbit_trap)
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  return mix(
+    mix(mix(hash(i.xy), hash(i.xy+vec2(1,0)), f.x),
+        mix(hash(i.xy+vec2(0,1)), hash(i.xy+vec2(1,1)), f.x), f.y),
+    mix(mix(hash(i.xy+i.z), hash(i.xy+vec2(1,0)+i.z), f.x),
+        mix(hash(i.xy+vec2(0,1)+i.z), hash(i.xy+vec2(1,1)+i.z), f.x), f.y),
+    f.z);
+}
+
+// ─── Mandelbulb DE ────────────────────────────────────────────────────────
 
 vec2 mandelbulbDE(vec3 pos) {
-  vec3  z    = pos;
-  float dr   = 1.0;
-  float r    = 0.0;
-  float trap = 1e10;   // orbit trap — min distance to origin over orbit
+  vec3  z     = pos;
+  float dr    = 1.0;
+  float r     = 0.0;
+  float trap  = 1e10;
   float power = iPower;
+  vec3  c     = (iMode == 1) ? iJuliaC : pos;
 
-  for (int i = 0; i < 12; i++) {
+  for (int i = 0; i < 32; i++) {
     r = length(z);
-
-    trap = min(trap, dot(z, z));  // closest approach to origin
-
+    float t1 = dot(z, z);
+    float t2 = abs(z.y) + abs(z.x) * 0.4;
+    trap = min(trap, t1 * 0.5 + t2 * 0.5);
     if (r > 2.0) break;
 
-    // convert to polar
     float theta = acos(clamp(z.z / r, -1.0, 1.0));
     float phi   = atan(z.y, z.x);
     dr = pow(r, power - 1.0) * power * dr + 1.0;
 
-    // scale and rotate
     float zr = pow(r, power);
     theta *= power;
     phi   *= power;
 
-    // back to cartesian
     z = zr * vec3(
       sin(theta) * cos(phi),
       sin(theta) * sin(phi),
       cos(theta)
-    ) + pos;
+    ) + c;
   }
 
-  float dist = 0.5 * log(r) * r / dr;
+  float dist = max(0.00005, 0.5 * log(r) * r / dr);
   return vec2(dist, trap);
 }
 
 // ─── raymarch ─────────────────────────────────────────────────────────────
-// returns vec3(hit_dist, orbit_trap, steps)
 
 vec3 march(vec3 ro, vec3 rd) {
-  float t    = 0.0;
-  float trap = 0.0;
+  float t = 0.0, trap = 0.0;
   for (int i = 0; i < MAX_STEPS; i++) {
-    vec2 res = mandelbulbDE(ro + rd * t);
-    float d  = res.x;
-    trap     = res.y;
+    vec2  res = mandelbulbDE(ro + rd * t);
+    float d   = res.x;
+    trap = res.y;
     if (d < SURF_DIST) return vec3(t, trap, float(i));
     if (t > MAX_DIST)  break;
-    t += d * 0.55;   // conservative step — avoids missing thin features
+    t += d * 0.5;  // sharper geometry
   }
   return vec3(-1.0, trap, float(MAX_STEPS));
 }
 
-// ─── surface normal (finite differences) ──────────────────────────────────
+// ─── normal ───────────────────────────────────────────────────────────────
 
-vec3 normal(vec3 p) {
-  float e = 0.001;
+vec3 calcNormal(vec3 p) {
+  float e = 0.0003;
   vec2 k = vec2(1.0, -1.0);
   return normalize(
     k.xyy * mandelbulbDE(p + k.xyy*e).x +
@@ -90,11 +107,10 @@ vec3 normal(vec3 p) {
   );
 }
 
-// ─── ambient occlusion ────────────────────────────────────────────────────
+// ─── AO ───────────────────────────────────────────────────────────────────
 
-float ao(vec3 p, vec3 n) {
-  float occ = 0.0;
-  float w    = 1.0;
+float calcAO(vec3 p, vec3 n) {
+  float occ = 0.0, w = 1.0;
   for (int i = 1; i <= 5; i++) {
     float d = float(i) * 0.08;
     occ += w * (d - mandelbulbDE(p + n * d).x);
@@ -103,21 +119,29 @@ float ao(vec3 p, vec3 n) {
   return clamp(1.0 - occ * 2.8, 0.0, 1.0);
 }
 
-// ─── color from orbit trap ────────────────────────────────────────────────
+// ─── triplanar ────────────────────────────────────────────────────────────
+
+vec3 triplanar(vec3 p, vec3 n, float scale) {
+  vec3 blend = pow(abs(n), vec3(4.0));
+  blend /= blend.x + blend.y + blend.z;
+  return texture2D(iTexture, p.yz * scale).rgb * blend.x
+       + texture2D(iTexture, p.xz * scale).rgb * blend.y
+       + texture2D(iTexture, p.xy * scale).rgb * blend.z;
+}
+
+// ─── orbit color ──────────────────────────────────────────────────────────
 
 vec3 orbitColor(float trap, float steps) {
-  float t = clamp(trap * 0.55, 0.0, 1.0);
+  float t = clamp(sqrt(trap) * 0.7, 0.0, 1.0);
   float s = steps / float(MAX_STEPS);
-
-  // base hue from trap distance + user shift
-  float hue  = fract(t * 0.6 + s * 0.3 + iColorShift);
-  float sat  = 0.55 + 0.3 * sin(t * PI);
-  float val  = 0.5  + 0.5 * (1.0 - s);
-
-  // hsv → rgb
-  vec4  K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-  vec3  p2 = abs(fract(vec3(hue) + K.xyz) * 6.0 - K.www);
-  return val * mix(K.xxx, clamp(p2 - K.xxx, 0.0, 1.0), sat);
+  vec3 col1 = vec3(0.12, 0.06, 0.18);
+  vec3 col2 = vec3(0.55, 0.38, 0.22) + vec3(0.0, 0.12, 0.08) * sin(t * PI * 3.0 + iColorShift * TAU);
+  vec3 col3 = vec3(0.90, 0.85, 0.75);
+  float m1 = smoothstep(0.0, 0.45, t);
+  float m2 = smoothstep(0.45, 1.0, t);
+  vec3 col = mix(mix(col1, col2, m1), col3, m2 * 0.6);
+  col *= 0.5 + 0.5 * (1.0 - s * 0.7);
+  return col;
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────
@@ -125,65 +149,54 @@ vec3 orbitColor(float trap, float steps) {
 void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
 
-  // ── camera: orbit around bulb, slowly rolling ──
-  float camSpeed = 0.18;
-  float camAngleY = iTime * camSpeed;
-  float camAngleX = sin(iTime * camSpeed * 0.4) * 0.4;
+  vec3 ro = iCamPos;
+  vec3 rd = normalize(iCamForward * 1.6 + uv.x * iCamRight + uv.y * iCamUp);
 
-  float camDist = 2.6 + sin(iTime * 0.11) * 0.3;  // gentle zoom pulse
-
-  vec3 ro = vec3(
-    camDist * sin(camAngleY) * cos(camAngleX),
-    camDist * sin(camAngleX),
-    camDist * cos(camAngleY) * cos(camAngleX)
-  );
-
-  // look at origin
-  vec3 forward = normalize(-ro);
-  vec3 right   = normalize(cross(forward, vec3(0.0, 1.0, 0.0)));
-  vec3 up      = cross(right, forward);
-
-  float fl = 1.6;  // focal length
-  vec3 rd  = normalize(forward * fl + uv.x * right + uv.y * up);
-
-  // ── fractal self-rotation ──
-  // rotate the sample space so the bulb tumbles
-  // applied inside the DE via rotating the query point
-  // (cheaper than rotating camera rig)
-
-  // ── march ──
   vec3 res = march(ro, rd);
-
   vec3 col;
 
   if (res.x < 0.0) {
-    // background — deep space gradient
-    float bg = pow(max(0.0, dot(rd, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5), 2.0);
-    col = mix(vec3(0.01, 0.01, 0.03), vec3(0.03, 0.01, 0.06), bg);
+    col = sampleHDR(rd) * 0.55;
   } else {
-    vec3 p = ro + rd * res.x;
-    vec3 n = normal(p);
-    float occ = ao(p, n);
+    vec3  p    = ro + rd * res.x;
+    vec3  n    = calcNormal(p);
+    float occ  = calcAO(p, n);
 
-    // lighting — one key light + soft fill
-    vec3 ld1  = normalize(vec3(1.0, 1.5, 0.8));
-    vec3 ld2  = normalize(vec3(-1.0, -0.5, -1.0));
-    float diff1 = clamp(dot(n, ld1), 0.0, 1.0);
-    float diff2 = clamp(dot(n, ld2), 0.0, 1.0) * 0.25;
-    float spec  = pow(clamp(dot(reflect(-ld1, n), -rd), 0.0, 1.0), 24.0) * 0.4;
+    vec3  viewDir = normalize(-rd);
+    vec3  ld      = normalize(vec3(1.0, 1.5, 0.8));
 
+    // 1. Blinn-Phong specular
+    vec3  halfDir = normalize(ld + viewDir);
+    float spec    = pow(max(dot(n, halfDir), 0.0), 64.0);
+
+    float diff    = clamp(dot(n, ld), 0.0, 1.0);
+
+    // 2. Correct env lighting — diffuse from normal, specular from reflection
+    vec3 reflDir  = reflect(rd, n);
+    vec3 envDiffuse = sampleHDR(n)       * 0.25;
+    vec3 envSpec    = sampleHDR(reflDir) * 0.6;
+
+    // 3. Surface color with micro-variation
     vec3 matCol = orbitColor(res.y, res.z);
+    vec3 texCol = triplanar(p, n, 1.2);
+    matCol = mix(matCol, matCol * texCol * 2.2, 0.75);
+    float variation = noise(p * 3.0);
+    matCol *= mix(0.85, 1.15, variation);
 
-    col  = matCol * (diff1 + diff2 + 0.08) * occ;
-    col += vec3(1.0, 0.95, 0.9) * spec * occ;
+    col  = matCol * (diff * 0.9 + envDiffuse + 0.05) * occ;
+    col += envSpec * spec * occ;
 
-    // depth fog
-    float fog = exp(-res.x * 0.18);
-    col = mix(vec3(0.01, 0.01, 0.03), col, fog);
+    // 4. Curvature-based edge enhancement
+    float edge = pow(1.0 - abs(dot(n, viewDir)), 2.0);
+    col += edge * 0.4;
+
+    // 6. Ground contact — darken underside
+    float ground = smoothstep(0.0, 1.0, p.y + 1.0);
+    col *= mix(0.6, 1.0, ground);
   }
 
   // tonemap + gamma
-  col = 1.0 - exp(-col * 1.6);
+  col = 1.0 - exp(-col * 1.8);
   col = pow(clamp(col, 0.0, 1.0), vec3(0.4545));
 
   gl_FragColor = vec4(col, 1.0);
