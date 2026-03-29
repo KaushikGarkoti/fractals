@@ -4,10 +4,14 @@ import vertexShader from './shaders/vertex.glsl?raw';
 import mandelbrot from './fractals/mandelbrot.js';
 import sierpinski from './fractals/sierpinski.js';
 import julia from './fractals/julia';
+import domainWarp from './patterns/domainWarp';
 
-// ─── Fractal registry ─────────────────────────────────────────────────────────
+// ─── Registries ───────────────────────────────────────────────────────────────
 
-const FRACTALS = [mandelbrot, sierpinski, julia];
+const FRACTALS  = [mandelbrot, sierpinski, julia];
+const PATTERNS  = [domainWarp]; // domain warp, interference, etc. go here
+
+const ALL = [...FRACTALS, ...PATTERNS];
 
 // ─── Renderer ─────────────────────────────────────────────────────────────────
 
@@ -21,7 +25,7 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const geo    = new THREE.PlaneGeometry(2, 2);
 
 const materials = {};
-for (const f of FRACTALS) {
+for (const f of ALL) {
   materials[f.name] = new THREE.ShaderMaterial({
     uniforms:       f.uniforms,
     vertexShader,
@@ -29,12 +33,12 @@ for (const f of FRACTALS) {
   });
 }
 
-const mesh = new THREE.Mesh(geo, materials[FRACTALS[0].name]);
+const mesh = new THREE.Mesh(geo, materials[ALL[0].name]);
 scene.add(mesh);
 
-// ─── Active fractal ───────────────────────────────────────────────────────────
+// ─── Active scene ─────────────────────────────────────────────────────────────
 
-let current = FRACTALS[0];
+let current = ALL[0];
 current.init(window.innerWidth, window.innerHeight);
 
 // 🔥 NEW — preset dropdown
@@ -130,16 +134,32 @@ function switchTo(fractal) {
 // ─── Dropdown ─────────────────────────────────────────────────────────────────
 
 const selectEl = document.getElementById('fractal-select');
-for (const f of FRACTALS) {
-  const opt = document.createElement('option');
-  opt.value = f.name;
-  opt.textContent = f.name;
-  selectEl.appendChild(opt);
+
+function buildDropdown() {
+  selectEl.innerHTML = '';
+  const groups = [
+    { label: 'Fractals', items: FRACTALS },
+    { label: 'Patterns', items: PATTERNS },
+  ];
+  for (const group of groups) {
+    if (group.items.length === 0) continue;
+    const grp = document.createElement('optgroup');
+    grp.label = group.label;
+    for (const f of group.items) {
+      const opt = document.createElement('option');
+      opt.value = f.name;
+      opt.textContent = f.name;
+      grp.appendChild(opt);
+    }
+    selectEl.appendChild(grp);
+  }
+  selectEl.value = current.name;
 }
-selectEl.value = current.name;
+
+buildDropdown();
 
 selectEl.addEventListener('change', () => {
-  const f = FRACTALS.find(f => f.name === selectEl.value);
+  const f = ALL.find(f => f.name === selectEl.value);
   if (f) switchTo(f);
 });
 
@@ -242,7 +262,7 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
-  for (const f of FRACTALS) {
+  for (const f of ALL) {
     f.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
   }
 });
@@ -294,7 +314,7 @@ function animate() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
-for (const f of FRACTALS) {
+for (const f of ALL) {
   f.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
 }
 
