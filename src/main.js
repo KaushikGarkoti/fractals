@@ -1,22 +1,13 @@
-/**
- * Fractal Explorer — GPU Renderer
- *
- * Adding a new fractal:
- *   1. Create src/shaders/myfractal.glsl
- *   2. Create src/fractals/myfractal.js  (implement the fractal module interface)
- *   3. Import and add it to the FRACTALS array below — done.
- */
-
 import * as THREE from 'three';
 import vertexShader from './shaders/vertex.glsl?raw';
 
 import mandelbrot from './fractals/mandelbrot.js';
 import sierpinski from './fractals/sierpinski.js';
+import julia from './fractals/julia';
 
 // ─── Fractal registry ─────────────────────────────────────────────────────────
-// To add a new fractal: import it above and push it into this array.
 
-const FRACTALS = [mandelbrot, sierpinski];
+const FRACTALS = [mandelbrot, sierpinski, julia];
 
 // ─── Renderer ─────────────────────────────────────────────────────────────────
 
@@ -29,7 +20,6 @@ const scene  = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const geo    = new THREE.PlaneGeometry(2, 2);
 
-// Pre-compile one ShaderMaterial per fractal so switching is instant.
 const materials = {};
 for (const f of FRACTALS) {
   materials[f.name] = new THREE.ShaderMaterial({
@@ -45,12 +35,95 @@ scene.add(mesh);
 // ─── Active fractal ───────────────────────────────────────────────────────────
 
 let current = FRACTALS[0];
-current.init();
+current.init(window.innerWidth, window.innerHeight);
+
+// 🔥 NEW — preset dropdown
+const presetSelect = document.createElement('select');
+presetSelect.style.position = 'absolute';
+presetSelect.style.bottom = '60px';
+presetSelect.style.left = '50%';
+presetSelect.style.transform = 'translateX(-50%)';
+presetSelect.style.padding = '6px 10px';
+presetSelect.style.borderRadius = '6px';
+presetSelect.style.background = '#222';
+presetSelect.style.color = '#fff';
+presetSelect.style.display = 'none';
+document.body.appendChild(presetSelect);
+
+// 🔥 NEW — variant dropdown
+const variantSelect = document.createElement('select');
+
+variantSelect.style.position = 'absolute';
+variantSelect.style.bottom = '100px'; // 👈 slightly above preset
+variantSelect.style.left = '50%';
+variantSelect.style.transform = 'translateX(-50%)';
+variantSelect.style.padding = '6px 10px';
+variantSelect.style.borderRadius = '6px';
+variantSelect.style.background = '#222';
+variantSelect.style.color = '#fff';
+variantSelect.style.display = 'none';
+
+document.body.appendChild(variantSelect);
+
+// 🔥 NEW — update dropdown
+function updatePresetDropdown(fractal) {
+  presetSelect.innerHTML = '';
+
+  if (!fractal.getPresets) {
+    presetSelect.style.display = 'none';
+    return;
+  }
+
+  const presets = fractal.getPresets();
+  presetSelect.style.display = 'block';
+
+  presets.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = p.name;
+    presetSelect.appendChild(opt);
+  });
+}
+
+function updateVariantDropdown(fractal) {
+  variantSelect.innerHTML = '';
+
+  if (!fractal.getVariants) {
+    variantSelect.style.display = 'none';
+    return;
+  }
+
+  const variants = fractal.getVariants();
+  variantSelect.style.display = 'block';
+
+  variants.forEach((v, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = v;
+    variantSelect.appendChild(opt);
+  });
+}
+
+// 🔥 NEW — handle preset selection
+presetSelect.addEventListener('change', (e) => {
+  const idx = parseInt(e.target.value);
+  current.setPreset?.(idx);
+  updateUI();
+});
+
+variantSelect.addEventListener('change', (e) => {
+  const idx = parseInt(e.target.value);
+  current.setVariant?.(idx);
+  updateUI();
+});
 
 function switchTo(fractal) {
   current = fractal;
   mesh.material = materials[fractal.name];
-  fractal.init();
+  fractal.init(window.innerWidth, window.innerHeight);
+
+  updatePresetDropdown(fractal); // 🔥 NEW
+  updateVariantDropdown(fractal);
   updateUI();
 }
 
@@ -64,10 +137,14 @@ for (const f of FRACTALS) {
   selectEl.appendChild(opt);
 }
 selectEl.value = current.name;
+
 selectEl.addEventListener('change', () => {
   const f = FRACTALS.find(f => f.name === selectEl.value);
   if (f) switchTo(f);
 });
+
+// 🔥 NEW — initialize preset dropdown on load
+updatePresetDropdown(current);
 
 // ─── Mouse / drag ─────────────────────────────────────────────────────────────
 
@@ -153,12 +230,11 @@ renderer.domElement.addEventListener('touchend', () => { isDragging = false; });
 document.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
 
-  // R always resets the active fractal
   if (key === 'r') { current.reset(); updateUI(); return; }
 
-  // Delegate everything else to the active fractal
   const handled = current.onKey(key, mouseX, mouseY, window.innerWidth, window.innerHeight);
   if (handled) updateUI();
+
   if (key === ' ') e.preventDefault();
 });
 
@@ -180,7 +256,7 @@ function updateUI() {
   uiEl.innerHTML = current.getHUD();
 }
 
-// ─── FPS counter ──────────────────────────────────────────────────────────────
+// ─── FPS ──────────────────────────────────────────────────────────────────────
 
 let fpsSamples  = [];
 let lastFpsTime = performance.now();
@@ -206,7 +282,6 @@ function animate() {
   const dt  = Math.min(now - lastT, 0.1);
   lastT = now;
 
-  // Update universal time + resolution uniforms on active fractal
   current.uniforms.iTime.value = now;
   current.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
 
