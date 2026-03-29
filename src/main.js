@@ -15,7 +15,7 @@ import { Decimal } from 'decimal.js';
 import vertexShader   from './shaders/vertex.glsl?raw';
 import fragmentShader from './shaders/fragment.glsl?raw';
 
-Decimal.set({ precision: 40 }); // ~40 significant digits → accurate to zoom ~1e40
+Decimal.set({ precision: 80 }); // ~40 significant digits → accurate to zoom ~1e40
 
 // ─── Renderer ─────────────────────────────────────────────────────────────────
 
@@ -81,13 +81,11 @@ function splitFloat64(x) {
 // ─── Reference orbit computation (Decimal 40-digit, runs on JS side) ──────────
 
 function computeOrbit() {
-  const maxIter = Math.round(uniforms.iMaxIter.value);
-
   orbitData[0] = 0; orbitData[1] = 0; orbitData[2] = 0; orbitData[3] = 0;
   let zx = new Decimal(0), zy = new Decimal(0);
   let n = 1;
 
- const limit = Math.min(maxIter + 200, ORBIT_SIZE - 1);;
+  const limit = ORBIT_SIZE - 1;
 
   for (let i = 0; i < limit; i++) {
     const zx2 = zx.times(zx);

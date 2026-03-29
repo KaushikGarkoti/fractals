@@ -50,8 +50,6 @@ void main() {
   for (int i = 0; i < MAX_ITER; i++) {
     if (i >= maxI) break;
 
-    vec2 Zref = vec2(Zref4.x, Zref4.z);
-
     // Correct double-double quadratic perturbation
     float ex = 2.0 * (Zref4.x * epsilon.x - Zref4.z * epsilon.y)
              + 2.0 * (Zref4.y * epsilon.x - Zref4.w * epsilon.y)
@@ -89,7 +87,7 @@ void main() {
     float full_r2 = dot(z, z);
     float glitch = full_r2 / (zRef2 + 1e-12);
 
-    if (refIdx >= orbitLen - 5 || eps2 > zRef2 * 0.001 || glitch < 1e-5 || eps2 > 4.0) {
+    if (refIdx >= orbitLen - 5 || eps2 > zRef2 || glitch < 1e-5 || eps2 > 4.0) {
       epsilon = z;                    // rebase perturbation to full value
       refIdx = 0;
       Zref4 = fetchZdf(0);
@@ -101,17 +99,22 @@ void main() {
 
   // Coloring
   vec3 col;
+
   if (inside) {
-    col = vec3(0.0, 0.01, 0.03) + getColor(sqrt(minTrap) * 0.8, iColorPalette) * 0.06;
+    col = vec3(0.0); // 🖤 interior = black
   } else {
     float t = smoothIt / iMaxIter;
+
     vec3 wide = getColor(t * 3.5 + iTime * 0.02, iColorPalette);
     vec3 fine = getColor(t * 15.0, iColorPalette);
+
     col = mix(wide, fine, 0.28);
     col *= 0.55 + 0.45 * cos(smoothIt * 0.85);
   }
 
+  // vignette + gamma (unchanged)
   col *= 1.0 - 0.22 * dot(uv, uv);
   col = pow(clamp(col, 0.0, 1.0), vec3(0.4545));
+
   gl_FragColor = vec4(col, 1.0);
 }
