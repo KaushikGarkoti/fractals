@@ -8,7 +8,7 @@ const S3 = Math.sqrt(3);
 // Equilateral triangle: A=(0,0), B=(1,0), C=(0.5, S3/2)
 // Centroid at (0.5, S3/6). Default view: centroid centered, full triangle visible.
 const DEFAULT_CX    = 0.5;
-const DEFAULT_CY    = S3 / 6;
+const DEFAULT_CY    = S3 / 6; 
 const DEFAULT_SCALE = 0.75;  // iViewScale at default zoom (fits the triangle)
 
 // ─── Uniforms ─────────────────────────────────────────────────────────────────
