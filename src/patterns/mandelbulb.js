@@ -52,9 +52,13 @@ const cam = {
   theta:      0.4,      // horizontal angle (radians)
   phi:        0.3,      // vertical angle (radians)
   radius:     5.5,      // distance from origin
-  autoOrbit:  true,     // resumes when idle
-  idleTimer:  0,        // seconds since last interaction
+  autoOrbit:  false,    // whether orbit is currently active
+  orbitEnabled: false,  // user preference — idle-resume only applies when true
+  idleTimer:  0,
+  jitter:     0.003,    // handheld shake amplitude
 };
+
+let camTime = 0; // local clock for jitter (independent of iTime)
 
 const julia = {
   animating:  true,
@@ -100,11 +104,20 @@ const uniforms = {
   iCamRight:   { value: new THREE.Vector3() },
   iCamUp:      { value: new THREE.Vector3() },
   iCamForward: { value: new THREE.Vector3() },
-  iAperture:   { value: 0.0 },
-  iFocalDist:  { value: 4.0 },
+  iAperture:    { value: 0.0 },
+  iFocalDist:   { value: 4.0 },
+  iDistortion:  { value: 0.05 },
+  iFog:         { value: 0.0 },
+  iGrain:       { value: 0.012 },
+  iVignette:    { value: 0.3 },
+  iFov:         { value: 35.0 },
+  iExposure:    { value: 1.0 },
+  iWarmth:      { value: 0.05 },
 };
 
 function updateCamera(dt) {
+  camTime += dt;
+
   if (cam.autoOrbit) {
     cam.theta += dt * 0.18;
   }
@@ -118,6 +131,14 @@ function updateCamera(dt) {
   const worldUp = new THREE.Vector3(0, 1, 0);
   const right   = new THREE.Vector3().crossVectors(forward, worldUp).normalize();
   const up      = new THREE.Vector3().crossVectors(right, forward);
+
+  // Handheld jitter — sinusoidal shake in camera-local space
+  if (cam.jitter > 0) {
+    const jx = Math.sin(camTime * 1.3) * cam.jitter;
+    const jy = Math.cos(camTime * 1.7) * cam.jitter;
+    pos.addScaledVector(right, jx);
+    pos.addScaledVector(up,    jy);
+  }
 
   uniforms.iCamPos.value.copy(pos);
   uniforms.iCamForward.value.copy(forward);
@@ -161,6 +182,10 @@ export default {
     lighting.add(light, 'azimuth',   0, 360, 1).name('Light Az°');
     lighting.add(light, 'elevation', 0,  90, 1).name('Light El°');
     lighting.add(uniforms.iGroundY, 'value', -3.0, 0.0, 0.05).name('Ground height');
+    lighting.add(cam, 'orbitEnabled').name('Auto-orbit').onChange(v => {
+      cam.autoOrbit = v;
+      cam.idleTimer = 0;
+    });
 
     const fractal = gui.addFolder('Fractal');
     fractal.add(state, 'morphing').name('Morph');
@@ -172,9 +197,20 @@ export default {
     fractal.add(state, 'colorShift', 0.0, 1.0, 0.01).name('Color shift');
 
     const camera = gui.addFolder('Camera / DoF');
-    camera.add(uniforms.iAperture,  'value', 0.0, 0.06, 0.001).name('Aperture (0=off)');
-    camera.add(uniforms.iFocalDist, 'value', 0.5, 8.0, 0.05).name('Focal distance');
+    camera.add(uniforms.iFov,        'value', 20.0, 90.0, 0.5  ).name('FOV°');
+    camera.add(uniforms.iAperture,   'value', 0.0,  0.06, 0.001).name('Aperture (0=off)');
+    camera.add(uniforms.iFocalDist,  'value', 0.5,  8.0,  0.05 ).name('Focal distance');
     camera.close();
+
+    const look = gui.addFolder('Look');
+    look.add(uniforms.iExposure,     'value',   0.2,  3.0,  0.05 ).name('Exposure');
+    look.add(uniforms.iWarmth,       'value',  -0.15, 0.15, 0.005).name('Warmth');
+    look.add(cam,                    'jitter',  0.0,  0.02, 0.001).name('Handheld jitter');
+    look.add(uniforms.iDistortion,   'value',   0.0,  0.3,  0.005).name('Lens distortion');
+    look.add(uniforms.iFog,          'value',   0.0,  0.15, 0.005).name('Fog density');
+    look.add(uniforms.iGrain,        'value',   0.0,  0.06, 0.002).name('Film grain');
+    look.add(uniforms.iVignette,     'value',   0.0,  0.8,  0.01 ).name('Vignette');
+    look.close();
 
     const juliaFolder = gui.addFolder('Julia C');
     juliaFolder.add(julia, 'cx', -1.0, 1.0, 0.001).name('cx').listen();
@@ -198,8 +234,8 @@ export default {
   },
 
   update(dt) {
-    // idle timer — resume auto-orbit after 3s of no interaction
-    if (!cam.autoOrbit) {
+    // idle timer — resume orbit after 3s only if user has it enabled
+    if (cam.orbitEnabled && !cam.autoOrbit) {
       cam.idleTimer += dt;
       if (cam.idleTimer > 3.0) cam.autoOrbit = true;
     }
@@ -236,17 +272,17 @@ export default {
 
   // ── drag to orbit ────────────────────────────────────────────────────────
   pan(dx, dy) {
-    cam.theta     -= dx * 0.006;
-    cam.phi        = Math.max(-1.2, Math.min(1.2, cam.phi + dy * 0.006));
-    cam.autoOrbit  = false;
-    cam.idleTimer  = 0;
+    cam.theta    -= dx * 0.006;
+    cam.phi       = Math.max(-1.2, Math.min(1.2, cam.phi + dy * 0.006));
+    cam.autoOrbit = false;  // pause; resumes via idle-timer if orbitEnabled
+    cam.idleTimer = 0;
   },
 
   // ── scroll to zoom ───────────────────────────────────────────────────────
   zoomToward(_x, _y, factor) {
-    cam.radius     = Math.max(1.6, Math.min(8.0, cam.radius / factor));
-    cam.autoOrbit  = false;
-    cam.idleTimer  = 0;
+    cam.radius    = Math.max(1.6, Math.min(8.0, cam.radius / factor));
+    cam.autoOrbit = false;
+    cam.idleTimer = 0;
   },
 
   onKey(key) {
