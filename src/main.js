@@ -125,6 +125,7 @@ variantSelect.addEventListener('change', (e) => {
 });
 
 function switchTo(fractal) {
+  current.dispose?.();
   current = fractal;
   mesh.material = materials[fractal.name];
   fractal.init(window.innerWidth, window.innerHeight);

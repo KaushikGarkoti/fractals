@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import GUI from 'lil-gui';
 import fragmentShader from '../shaders/mandelbulb.glsl?raw';
-import albedoUrl  from '../textures/coast_sand_rocks_02_2k/textures/coast_sand_rocks_02.webp?url';
+import albedoUrl  from '../textures/cloud3.jpg?url';
 import normalUrl  from '../textures/coast_sand_rocks_02_2k/textures/coast_sand_rocks_02_nor_gl_2k.jpg?url';
 import roughUrl   from '../textures/coast_sand_rocks_02_2k/textures/coast_sand_rocks_02_rough_2k.jpg?url';
+import dispUrl    from '../textures/coast_sand_rocks_02_2k/textures/coast_sand_rocks_02_disp_2k.jpg?url';
 import hdrUrl     from '../textures/tree_lined_driveway_2k.hdr?url';
 
 function loadTex(url) {
@@ -13,9 +15,10 @@ function loadTex(url) {
   });
 }
 
-const albedoMap    = loadTex(albedoUrl);
-const normalMap    = loadTex(normalUrl);
-const roughnessMap = loadTex(roughUrl);
+const albedoMap      = loadTex(albedoUrl);
+const normalMap      = loadTex(normalUrl);
+const roughnessMap   = loadTex(roughUrl);
+const displacementMap = loadTex(dispUrl);
 
 // 1×1 black placeholder — replaced once HDR finishes loading
 const envMap = new THREE.DataTexture(new Uint8Array([0,0,0,255]), 1, 1, THREE.RGBAFormat);
@@ -31,8 +34,8 @@ new RGBELoader().load(hdrUrl, (tex) => {
 });
 
 const light = {
-  azimuth:   45,   // degrees, 0–360
-  elevation: 55,   // degrees, 0–90
+  azimuth:   187,
+  elevation: 21,
 };
 
 function lightDir() {
@@ -65,7 +68,7 @@ const state = {
   mode:       0,        // 0 = Mandelbulb, 1 = Julia 3D
   morphTime:  0.0,
   morphing:   true,
-  morphSpeed: 1.0,      // multiplier: 0.25=slow, 1=normal, 4=fast
+  morphSpeed: 6.875,    // multiplier: 0.25=slow, 1=normal, 4=fast
 };
 
 const uniforms = {
@@ -73,10 +76,21 @@ const uniforms = {
   iResolution: { value: new THREE.Vector2() },
   iPower:      { value: state.power },
   iColorShift: { value: state.colorShift },
-  iLightDir:     { value: new THREE.Vector3(0.71, 0.84, 0.71) },
-  iAlbedoMap:    { value: albedoMap },
-  iNormalMap:    { value: normalMap },
-  iRoughnessMap: { value: roughnessMap },
+  iLightDir:      { value: new THREE.Vector3(0.71, 0.84, 0.71) },
+  iAlbedoMap:      { value: albedoMap },
+  iNormalMap:      { value: normalMap },
+  iRoughnessMap:   { value: roughnessMap },
+  iDispMap:        { value: displacementMap },
+  iTexScale:       { value: 1.3 },
+  iCreviceDark:    { value: 0.12 },
+  iNormalStrength: { value: 0.14 },
+  iRoughnessMix:   { value: 0.21 },
+  iDispStrength:   { value: 0.08 },
+  iColorTint:      { value: new THREE.Color('#a58888') },
+  iDetailIter:    { value: 33.0 },
+  iNormalBlur:    { value: 0.005 },
+  iSurfDist:      { value: 0.005 },
+  iBailout:       { value: 2.0 },
   iMode:       { value: 0 },
   iJuliaC:     { value: new THREE.Vector3() },
   iEnvMap:     { value: envMap },
@@ -108,6 +122,8 @@ function updateCamera(dt) {
   uniforms.iCamUp.value.copy(up);
 }
 
+let gui = null;
+
 export default {
   name: 'Mandelbulb',
   fragmentShader,
@@ -116,6 +132,51 @@ export default {
   init(w, h) {
     uniforms.iResolution.value.set(w, h);
     updateCamera(0);
+
+    if (gui) gui.destroy();
+    gui = new GUI({ title: 'Mandelbulb' });
+
+    const shape = gui.addFolder('Shape');
+    shape.add(uniforms.iDetailIter, 'value', 4, 50, 1).name('Detail iterations');
+    shape.add(uniforms.iNormalBlur, 'value', 0.001, 0.05, 0.001).name('Normal blur');
+    shape.add(uniforms.iSurfDist,   'value', 0.0001, 0.005, 0.0001).name('Surface dist');
+
+    const tex = gui.addFolder('Texture');
+    tex.add(uniforms.iTexScale,       'value', 0.1, 6.0, 0.05).name('Scale');
+    tex.add(uniforms.iCreviceDark,    'value', 0.0, 1.0, 0.01).name('Crevice darkness');
+    tex.add(uniforms.iNormalStrength, 'value', 0.0, 0.5, 0.01).name('Normal strength');
+    tex.add(uniforms.iRoughnessMix,   'value', 0.0, 1.0, 0.01).name('Roughness mix');
+    tex.add(uniforms.iDispStrength,   'value', 0.0, 0.08, 0.001).name('Displacement');
+
+    // color tint — lil-gui needs a plain object with a hex string property
+    const tintProxy = { color: '#a58888' };
+    tex.addColor(tintProxy, 'color').name('Color tint').onChange(v => {
+      uniforms.iColorTint.value.set(v);
+    });
+
+    const lighting = gui.addFolder('Lighting');
+    lighting.add(light, 'azimuth',   0, 360, 1).name('Light Az°');
+    lighting.add(light, 'elevation', 0,  90, 1).name('Light El°');
+
+    const fractal = gui.addFolder('Fractal');
+    fractal.add(state, 'morphing').name('Morph');
+    fractal.add(state, 'morphSpeed', 0.125, 8.0, 0.125).name('Morph speed');
+    fractal.add(state, 'power', 2.0, 12.0, 0.1).name('Power')
+      .listen() // reflects morph changes live
+      .onChange(v => { state.morphing = false; uniforms.iPower.value = v; });
+    fractal.add(uniforms.iBailout, 'value', 1.0, 6.0, 0.1).name('Bailout');
+    fractal.add(state, 'colorShift', 0.0, 1.0, 0.01).name('Color shift');
+
+    const juliaFolder = gui.addFolder('Julia C');
+    juliaFolder.add(julia, 'cx', -1.0, 1.0, 0.001).name('cx').listen();
+    juliaFolder.add(julia, 'cy', -1.0, 1.0, 0.001).name('cy').listen();
+    juliaFolder.add(julia, 'cz', -1.0, 1.0, 0.001).name('cz').listen();
+    juliaFolder.add(julia, 'animating').name('Animate').onChange(v => { julia.animating = v; });
+    juliaFolder.close();
+  },
+
+  dispose() {
+    if (gui) { gui.destroy(); gui = null; }
   },
 
   reset() {

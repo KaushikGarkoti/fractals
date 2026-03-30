@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "decimal.js": "^10.6.0",
+    "lil-gui": "^0.21.0",
     "three": "^0.170.0"
   },
   "devDependencies": {
