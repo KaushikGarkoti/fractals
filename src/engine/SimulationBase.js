@@ -2,22 +2,24 @@ import * as THREE from 'three';
 import vertexShader from '../shaders/vertex.glsl?raw';
 
 function pickRenderTargetType(renderer) {
-  // Try to keep this robust across WebGL1/WebGL2. We prefer float, then half-float, then byte.
+  // Prefer half-float/float for signed values (velocity) and more stable numerics.
   const caps = renderer.capabilities;
+  const gl = renderer.getContext();
 
   const hasExt = (name) => {
-    // three.js sometimes stores extensions in `renderer.extensions`.
     try {
-      return !!renderer.extensions?.has?.(name);
+      return !!gl.getExtension(name);
     } catch {
       return false;
     }
   };
 
-  const supportsFloat = caps.isWebGL2 || hasExt('EXT_color_buffer_float') || hasExt('WEBGL_color_buffer_float');
+  const isWebGL2 = !!caps?.isWebGL2;
+
+  const supportsFloat = isWebGL2 || hasExt('EXT_color_buffer_float') || hasExt('WEBGL_color_buffer_float');
   if (supportsFloat) return THREE.FloatType;
 
-  const supportsHalfFloat = caps.isWebGL2 || hasExt('EXT_color_buffer_half_float') || hasExt('OES_texture_half_float');
+  const supportsHalfFloat = isWebGL2 || hasExt('EXT_color_buffer_half_float') || hasExt('OES_texture_half_float');
   if (supportsHalfFloat) return THREE.HalfFloatType;
 
   return THREE.UnsignedByteType;
@@ -39,16 +41,20 @@ export class SimulationBase {
   }
 
   createRenderTarget(width, height) {
-    return new THREE.WebGLRenderTarget(width, height, {
+    const rt = new THREE.WebGLRenderTarget(width, height, {
       type: this.type,
       format: this.format,
-      minFilter: THREE.NearestFilter,
-      magFilter: THREE.NearestFilter,
+      // Stable fluids expects bilinear sampling during advection.
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
       depthBuffer: false,
       stencilBuffer: false,
       // Avoid accidental mipmapping artifacts.
       generateMipmaps: false,
     });
+    rt.texture.wrapS = THREE.ClampToEdgeWrapping;
+    rt.texture.wrapT = THREE.ClampToEdgeWrapping;
+    return rt;
   }
 
   createPingPong(width, height) {

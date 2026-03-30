@@ -179,6 +179,7 @@ updatePresetDropdown(current);
 // ─── Mouse / drag ─────────────────────────────────────────────────────────────
 
 let isDragging = false;
+let isInteracting = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 let mouseX     = window.innerWidth  * 0.5;
@@ -186,6 +187,7 @@ let mouseY     = window.innerHeight * 0.5;
 
 renderer.domElement.addEventListener('mousedown', (e) => {
   isDragging = true;
+  isInteracting = true;
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
   renderer.domElement.style.cursor = 'grabbing';
@@ -202,7 +204,8 @@ renderer.domElement.addEventListener('mousemove', (e) => {
 });
 
 renderer.domElement.addEventListener('mouseup',    () => { isDragging = false; renderer.domElement.style.cursor = 'crosshair'; });
-renderer.domElement.addEventListener('mouseleave', () => { isDragging = false; renderer.domElement.style.cursor = 'crosshair'; });
+renderer.domElement.addEventListener('mouseup',    () => { isDragging = false; isInteracting = false; renderer.domElement.style.cursor = 'crosshair'; });
+renderer.domElement.addEventListener('mouseleave', () => { isDragging = false; isInteracting = false; renderer.domElement.style.cursor = 'crosshair'; });
 renderer.domElement.style.cursor = 'crosshair';
 
 // ─── Scroll to zoom ───────────────────────────────────────────────────────────
@@ -223,6 +226,7 @@ let lastPinchDist = 0;
 renderer.domElement.addEventListener('touchstart', (e) => {
   if (e.touches.length === 1) {
     isDragging = true;
+    isInteracting = true;
     lastTouchX = e.touches[0].clientX;
     lastTouchY = e.touches[0].clientY;
   } else if (e.touches.length === 2) {
@@ -254,6 +258,7 @@ renderer.domElement.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 renderer.domElement.addEventListener('touchend', () => { isDragging = false; });
+renderer.domElement.addEventListener('touchend', () => { isDragging = false; isInteracting = false; });
 
 // ─── Keyboard ─────────────────────────────────────────────────────────────────
 
@@ -335,7 +340,7 @@ function animate() {
   current.uniforms.iTime.value = now;
   current.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
 
-  const changed = current.update(dt, mouseX, mouseY, window.innerWidth, window.innerHeight, renderer);
+  const changed = current.update(dt, mouseX, mouseY, window.innerWidth, window.innerHeight, renderer, isInteracting);
   if (changed) updateUI();
 
   renderer.render(scene, camera);
