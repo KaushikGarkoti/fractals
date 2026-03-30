@@ -91,6 +91,7 @@ const uniforms = {
   iNormalBlur:    { value: 0.005 },
   iSurfDist:      { value: 0.005 },
   iBailout:       { value: 2.0 },
+  iGroundY:       { value: -1.4 },
   iMode:       { value: 0 },
   iJuliaC:     { value: new THREE.Vector3() },
   iEnvMap:     { value: envMap },
@@ -157,6 +158,7 @@ export default {
     const lighting = gui.addFolder('Lighting');
     lighting.add(light, 'azimuth',   0, 360, 1).name('Light Az°');
     lighting.add(light, 'elevation', 0,  90, 1).name('Light El°');
+    lighting.add(uniforms.iGroundY, 'value', -3.0, 0.0, 0.05).name('Ground height');
 
     const fractal = gui.addFolder('Fractal');
     fractal.add(state, 'morphing').name('Morph');

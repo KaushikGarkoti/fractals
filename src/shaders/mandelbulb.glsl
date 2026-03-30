@@ -19,6 +19,7 @@ uniform float     iDetailIter;
 uniform float     iNormalBlur;
 uniform float     iSurfDist;
 uniform float     iBailout;
+uniform float     iGroundY;
 uniform int   iMode;
 uniform vec3  iJuliaC;
 uniform vec3  iCamPos;
@@ -179,7 +180,33 @@ void main() {
   vec3 res = march(ro, rd);
   vec3 col;
 
-  if (res.x < 0.0) {
+  // ground plane at y = -1.4 (just below Mandelbulb)
+  float groundY  = iGroundY;
+  float groundT  = (rd.y < -0.0001) ? (groundY - ro.y) / rd.y : -1.0;
+  bool  hitGround = groundT > 0.01 && (res.x < 0.0 || groundT < res.x);
+
+  if (hitGround) {
+    vec3  gp          = ro + rd * groundT;
+    vec3  groundNorm  = vec3(0.0, 1.0, 0.0);
+    vec3  lightDir    = normalize(iLightDir);
+
+    // sample HDR from below for ground color — matches actual environment
+    vec3  groundAlbedo = sampleHDR(vec3(0.1, -0.4, 0.3)) * 1.1;
+
+    float gNdotL  = max(dot(groundNorm, lightDir), 0.0);
+    float gShadow = softShadow(gp + groundNorm * 0.02, lightDir);
+
+    // AO from Mandelbulb proximity
+    float distToMB = length(gp);
+    float gAO = smoothstep(0.0, 2.5, distToMB - 1.0);
+
+    col = groundAlbedo * (gNdotL * gShadow * 0.9 + 0.15) * mix(0.3, 1.0, gAO);
+
+    // fade ground to horizon
+    float horizonFade = smoothstep(0.0, 6.0, groundT);
+    col = mix(col, sampleHDR(rd) * 0.55, horizonFade);
+
+  } else if (res.x < 0.0) {
     col = sampleHDR(rd) * 0.55;
   } else {
     vec3  p   = ro + rd * res.x;
