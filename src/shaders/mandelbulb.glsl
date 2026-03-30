@@ -27,6 +27,8 @@ uniform vec3  iCamRight;
 uniform vec3  iCamUp;
 uniform vec3  iCamForward;
 uniform sampler2D iEnvMap;
+uniform float iAperture;
+uniform float iFocalDist;
 
 #define PI        3.14159265359
 #define TAU       6.28318530718
@@ -171,18 +173,22 @@ vec3 orbitColor(float trap, float steps) {
   return col * (0.6 + 0.4 * (1.0 - s * 0.5));
 }
 
-void main() {
-  vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
+// Returns a point on a unit disk using Vogel spiral (good distribution for few samples)
+vec2 diskSample(int i, float phi) {
+  float golden = 2.399963; // golden angle (radians)
+  float r      = sqrt((float(i) + 0.5) / 8.0);
+  float theta  = float(i) * golden + phi;
+  return vec2(r * cos(theta), r * sin(theta));
+}
 
-  vec3 ro = iCamPos;
-  vec3 rd = normalize(iCamForward * 1.6 + uv.x * iCamRight + uv.y * iCamUp);
-
+// Core scene render — returns linear HDR color (before tonemapping)
+vec3 renderScene(vec3 ro, vec3 rd) {
   vec3 res = march(ro, rd);
   vec3 col;
 
-  // ground plane at y = -1.4 (just below Mandelbulb)
-  float groundY  = iGroundY;
-  float groundT  = (rd.y < -0.0001) ? (groundY - ro.y) / rd.y : -1.0;
+  // ground plane at y = iGroundY (just below Mandelbulb)
+  float groundY   = iGroundY;
+  float groundT   = (rd.y < -0.0001) ? (groundY - ro.y) / rd.y : -1.0;
   bool  hitGround = groundT > 0.01 && (res.x < 0.0 || groundT < res.x);
 
   if (hitGround) {
@@ -239,8 +245,6 @@ void main() {
     float dZ = triplanarDisp(tPos + vec3(0,0,eps), tblend, iTexScale);
     vec3 dispGrad = vec3(dX - dC, dY - dC, dZ - dC) / eps;
     n = normalize(n + dispGrad * iDispStrength * 8.0);
-    // override strength from uniform
-    // (triplanarNormal already uses iNormalStrength internally — see below)
 
     float NdotL = max(dot(n, lightDir), 0.0);
 
@@ -261,8 +265,6 @@ void main() {
     float depth = clamp(sqrt(res.y) * 0.8, 0.0, 1.0);
     vec3 baseColor = albedo * iColorTint * mix(iCreviceDark, 1.0, depth);
 
-    //baseColor *= mix(0.85, 1.15, fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453));
-
     vec3 diffuse = baseColor * (NdotL * 1.2 + 0.1);
     vec3 ambient = envDiff * 0.4 * baseColor;
 
@@ -275,6 +277,38 @@ void main() {
     col *= shadow * 0.8 + 0.2;
   }
 
+  return col;
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
+
+  vec3 ro = iCamPos;
+  vec3 rd = normalize(iCamForward * 1.6 + uv.x * iCamRight + uv.y * iCamUp);
+
+  vec3 col;
+
+  if (iAperture < 0.0001) {
+    // No DoF — single ray
+    col = renderScene(ro, rd);
+  } else {
+    // Thin-lens DoF: 8 samples on a lens disk, all aimed at the focal point
+    vec3 focalPt = ro + rd * iFocalDist;
+
+    // Per-pixel rotation breaks up the spiral pattern between neighbours
+    float phi = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * TAU;
+
+    col = vec3(0.0);
+    for (int s = 0; s < 8; s++) {
+      vec2 lens = diskSample(s, phi) * iAperture;
+      vec3 lro  = ro + iCamRight * lens.x + iCamUp * lens.y;
+      vec3 lrd  = normalize(focalPt - lro);
+      col += renderScene(lro, lrd);
+    }
+    col /= 8.0;
+  }
+
+  // Tonemapping + color grade + gamma (applied once, after averaging)
   col = col / (col + vec3(1.0));
   col *= vec3(1.05, 1.0, 0.95);
   col = pow(clamp(col, 0.0, 1.0), vec3(0.4545));

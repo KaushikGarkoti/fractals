@@ -100,6 +100,8 @@ const uniforms = {
   iCamRight:   { value: new THREE.Vector3() },
   iCamUp:      { value: new THREE.Vector3() },
   iCamForward: { value: new THREE.Vector3() },
+  iAperture:   { value: 0.0 },
+  iFocalDist:  { value: 4.0 },
 };
 
 function updateCamera(dt) {
@@ -168,6 +170,11 @@ export default {
       .onChange(v => { state.morphing = false; uniforms.iPower.value = v; });
     fractal.add(uniforms.iBailout, 'value', 1.0, 6.0, 0.1).name('Bailout');
     fractal.add(state, 'colorShift', 0.0, 1.0, 0.01).name('Color shift');
+
+    const camera = gui.addFolder('Camera / DoF');
+    camera.add(uniforms.iAperture,  'value', 0.0, 0.06, 0.001).name('Aperture (0=off)');
+    camera.add(uniforms.iFocalDist, 'value', 0.5, 8.0, 0.05).name('Focal distance');
+    camera.close();
 
     const juliaFolder = gui.addFolder('Julia C');
     juliaFolder.add(julia, 'cx', -1.0, 1.0, 0.001).name('cx').listen();
