@@ -10,13 +10,15 @@ import waveField   from './patterns/waveField';
 import mandelbulb  from './patterns/mandelbulb';
 import sdfBlobs    from './patterns/sdfBlobs';
 import warpField   from './patterns/warpField3d';
+import fluidSim   from './simulations/fluidSim';
 
 // ─── Registries ───────────────────────────────────────────────────────────────
 
 const FRACTALS  = [mandelbrot, sierpinski, julia, juliaWarp];
 const PATTERNS  = [domainWarp, waveField, mandelbulb, sdfBlobs, warpField]; // domain warp, interference, etc. go here
+const SIMULATIONS = [fluidSim];
 
-const ALL = [...FRACTALS, ...PATTERNS];
+const ALL = [...FRACTALS, ...PATTERNS, ...SIMULATIONS];
 
 // ─── Renderer ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +46,7 @@ scene.add(mesh);
 // ─── Active scene ─────────────────────────────────────────────────────────────
 
 let current = ALL[0];
-current.init(window.innerWidth, window.innerHeight);
+current.init(window.innerWidth, window.innerHeight, renderer);
 
 // 🔥 NEW — preset dropdown
 const presetSelect = document.createElement('select');
@@ -130,7 +132,7 @@ function switchTo(fractal) {
   current.dispose?.();
   current = fractal;
   mesh.material = materials[fractal.name];
-  fractal.init(window.innerWidth, window.innerHeight);
+  fractal.init(window.innerWidth, window.innerHeight, renderer);
 
   updatePresetDropdown(fractal);
   updateVariantDropdown(fractal);
@@ -147,6 +149,7 @@ function buildDropdown() {
   const groups = [
     { label: 'Fractals', items: FRACTALS },
     { label: 'Patterns', items: PATTERNS },
+    { label: 'Simulations', items: SIMULATIONS },
   ];
   for (const group of groups) {
     if (group.items.length === 0) continue;
@@ -332,7 +335,7 @@ function animate() {
   current.uniforms.iTime.value = now;
   current.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight);
 
-  const changed = current.update(dt, mouseX, mouseY, window.innerWidth, window.innerHeight);
+  const changed = current.update(dt, mouseX, mouseY, window.innerWidth, window.innerHeight, renderer);
   if (changed) updateUI();
 
   renderer.render(scene, camera);
