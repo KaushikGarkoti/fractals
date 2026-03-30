@@ -1,10 +1,9 @@
-precision highp float;
+// ── Scene-specific uniforms ───────────────────────────────────────────────────
+// Base uniforms (iResolution, iTime, iLightDir, iCamPos/Right/Up/Forward,
+// iEnvMap, iGroundY, DoF, Look) are declared in engine/base.glsl.
 
-uniform vec2  iResolution;
-uniform float iTime;
 uniform float iPower;
 uniform float iColorShift;
-uniform vec3      iLightDir;
 uniform sampler2D iAlbedoMap;
 uniform sampler2D iNormalMap;
 uniform sampler2D iRoughnessMap;
@@ -19,37 +18,14 @@ uniform float     iDetailIter;
 uniform float     iNormalBlur;
 uniform float     iSurfDist;
 uniform float     iBailout;
-uniform float     iGroundY;
-uniform int   iMode;
-uniform vec3  iJuliaC;
-uniform vec3  iCamPos;
-uniform vec3  iCamRight;
-uniform vec3  iCamUp;
-uniform vec3  iCamForward;
-uniform sampler2D iEnvMap;
-uniform float iAperture;
-uniform float iFocalDist;
-// Camera look
-uniform float iDistortion;  // barrel lens distortion (0 = off)
-uniform float iFog;         // atmospheric fog density (0 = off)
-uniform float iGrain;       // film grain strength (0 = off)
-uniform float iVignette;    // vignette strength (0 = off)
-uniform float iFov;         // vertical FOV in degrees
-uniform float iExposure;    // exposure multiplier before tonemapping
-uniform float iWarmth;      // color temperature: >0 warm, <0 cool
+uniform int       iMode;
+uniform vec3      iJuliaC;
 
-#define PI        3.14159265359
-#define TAU       6.28318530718
 #define MAX_STEPS 256
 #define SURF_DIST 0.0003
 #define MAX_DIST  14.0
 
-vec3 sampleHDR(vec3 dir) {
-  vec3 d = normalize(dir);
-  float u = fract(atan(d.z, d.x) / TAU + 0.5);
-  float v = asin(clamp(d.y, -1.0, 1.0)) / PI + 0.5;
-  return texture2D(iEnvMap, vec2(u, v)).rgb;
-}
+// ── Distance estimator ────────────────────────────────────────────────────────
 
 vec2 mandelbulbDE(vec3 pos) {
   vec3  z     = pos;
@@ -61,7 +37,7 @@ vec2 mandelbulbDE(vec3 pos) {
 
   for (int i = 0; i < 50; i++) {
     if (float(i) >= iDetailIter) break;
-    r = length(z);
+    r    = length(z);
     trap = min(trap, length(z));
     if (r > iBailout) break;
 
@@ -83,6 +59,8 @@ vec2 mandelbulbDE(vec3 pos) {
   return vec2(dist, trap);
 }
 
+// ── Ray marcher ───────────────────────────────────────────────────────────────
+
 vec3 march(vec3 ro, vec3 rd) {
   float t = 0.0, trap = 0.0;
   for (int i = 0; i < MAX_STEPS; i++) {
@@ -95,6 +73,8 @@ vec3 march(vec3 ro, vec3 rd) {
   }
   return vec3(-1.0, trap, float(MAX_STEPS));
 }
+
+// ── Lighting helpers ──────────────────────────────────────────────────────────
 
 vec3 calcNormal(vec3 p) {
   const float e = 0.0007;
@@ -122,11 +102,13 @@ float softShadow(vec3 ro, vec3 rd) {
   for (int i = 0; i < 8; i++) {
     float h = mandelbulbDE(ro + rd * t).x;
     res = min(res, 6.0 * h / t);
-    t += clamp(h, 0.04, 0.25);
+    t  += clamp(h, 0.04, 0.25);
     if (h < 0.002 || t > 4.0) break;
   }
   return clamp(res, 0.0, 1.0);
 }
+
+// ── Triplanar texturing ───────────────────────────────────────────────────────
 
 vec3 triplanarAlbedo(vec3 p, vec3 blend, float scale) {
   return texture2D(iAlbedoMap, p.yz * scale).rgb * blend.x
@@ -159,19 +141,13 @@ vec3 triplanarNormal(vec3 p, vec3 n, vec3 blend, float scale) {
   return normalize(n + mapped * iNormalStrength);
 }
 
-// Returns a point on a unit disk using Vogel spiral (good distribution for few samples)
-vec2 diskSample(int i, float phi) {
-  float golden = 2.399963;
-  float r      = sqrt((float(i) + 0.5) / 8.0);
-  float theta  = float(i) * golden + phi;
-  return vec2(r * cos(theta), r * sin(theta));
-}
+// ── Scene render (called by engine main) ─────────────────────────────────────
+// Returns linear HDR colour before tonemapping.
 
-// Core scene render — returns linear HDR color (before tonemapping)
 vec3 renderScene(vec3 ro, vec3 rd) {
-  vec3 res = march(ro, rd);
-  vec3 col;
-  float hitDist = -1.0; // tracked for fog
+  vec3  res = march(ro, rd);
+  vec3  col;
+  float hitDist = -1.0;
 
   float groundY   = iGroundY;
   float groundT   = (rd.y < -0.0001) ? (groundY - ro.y) / rd.y : -1.0;
@@ -179,17 +155,14 @@ vec3 renderScene(vec3 ro, vec3 rd) {
 
   if (hitGround) {
     hitDist = groundT;
-    vec3  gp          = ro + rd * groundT;
-    vec3  groundNorm  = vec3(0.0, 1.0, 0.0);
-    vec3  lightDir    = normalize(iLightDir);
+    vec3  gp         = ro + rd * groundT;
+    vec3  groundNorm = vec3(0.0, 1.0, 0.0);
+    vec3  lightDir   = normalize(iLightDir);
 
     vec3  groundAlbedo = sampleHDR(vec3(0.1, -0.4, 0.3)) * 1.1;
-
     float gNdotL  = max(dot(groundNorm, lightDir), 0.0);
     float gShadow = softShadow(gp + groundNorm * 0.02, lightDir);
-
-    float distToMB = length(gp);
-    float gAO = smoothstep(0.0, 2.5, distToMB - 1.0);
+    float gAO     = smoothstep(0.0, 2.5, length(gp) - 1.0);
 
     col = groundAlbedo * (gNdotL * gShadow * 0.9 + 0.15) * mix(0.3, 1.0, gAO);
 
@@ -197,62 +170,63 @@ vec3 renderScene(vec3 ro, vec3 rd) {
     col = mix(col, sampleHDR(rd) * 0.55, horizonFade);
 
   } else if (res.x < 0.0) {
-    // Sky — no fog applied
     col = sampleHDR(rd) * 0.55;
   } else {
     hitDist = res.x;
-    vec3  p   = ro + rd * res.x;
+    vec3 p = ro + rd * res.x;
 
+    // Smooth normals
     vec3 n1 = calcNormal(p);
     vec3 n2 = calcNormal(p + iNormalBlur);
     vec3 n3 = calcNormal(p - iNormalBlur);
-    vec3  n   = normalize(n1 + n2 + n3);
+    vec3 n  = normalize(n1 + n2 + n3);
 
     float occ = calcAO(p, n);
 
-    vec3  viewDir  = -rd;
+    vec3  viewDir = -rd;
     vec3  lightDir = normalize(iLightDir);
     vec3  halfDir  = normalize(lightDir + viewDir);
 
+    // Triplanar blend weights
     vec3 tblend = pow(abs(n), vec3(1.5));
     tblend /= (tblend.x + tblend.y + tblend.z);
     vec3 tPos = p;
 
+    // Normal-map perturbation
     n = triplanarNormal(tPos, n, tblend, iTexScale);
 
+    // Displacement gradient
     float eps = 0.02;
-    float dC = triplanarDisp(tPos,              tblend, iTexScale);
-    float dX = triplanarDisp(tPos + vec3(eps,0,0), tblend, iTexScale);
-    float dY = triplanarDisp(tPos + vec3(0,eps,0), tblend, iTexScale);
-    float dZ = triplanarDisp(tPos + vec3(0,0,eps), tblend, iTexScale);
-    vec3 dispGrad = vec3(dX - dC, dY - dC, dZ - dC) / eps;
-    n = normalize(n + dispGrad * iDispStrength * 8.0);
+    float dC  = triplanarDisp(tPos,               tblend, iTexScale);
+    float dX  = triplanarDisp(tPos + vec3(eps,0,0), tblend, iTexScale);
+    float dY  = triplanarDisp(tPos + vec3(0,eps,0), tblend, iTexScale);
+    float dZ  = triplanarDisp(tPos + vec3(0,0,eps), tblend, iTexScale);
+    n = normalize(n + vec3(dX-dC, dY-dC, dZ-dC) / eps * iDispStrength * 8.0);
 
     float NdotL = max(dot(n, lightDir), 0.0);
 
-    float roughMap = triplanarRoughness(tPos, tblend, iTexScale);
+    // Roughness-based specular
+    float roughMap  = triplanarRoughness(tPos, tblend, iTexScale);
     float roughness = clamp(mix(0.75, roughMap, iRoughnessMix), 0.3, 1.0);
     float specPower = mix(8.0, 128.0, 1.0 - roughness);
     float spec = pow(max(dot(n, halfDir), 0.0), specPower);
     spec *= (1.0 - roughness);
-    spec = pow(spec, 1.5);
+    spec  = pow(spec, 1.5);
 
-    vec3 reflDir = reflect(rd, n);
-    vec3 envSpec = sampleHDR(reflDir);
+    vec3 envSpec = sampleHDR(reflect(rd, n));
     vec3 envDiff = sampleHDR(n);
 
-    vec3 albedo = triplanarAlbedo(tPos, tblend, iTexScale);
-    float depth = clamp(sqrt(res.y) * 0.8, 0.0, 1.0);
-    vec3 baseColor = albedo * iColorTint * mix(iCreviceDark, 1.0, depth);
+    // Albedo with crevice darkening via orbit trap
+    vec3  albedo    = triplanarAlbedo(tPos, tblend, iTexScale);
+    float depth     = clamp(sqrt(res.y) * 0.8, 0.0, 1.0);
+    vec3  baseColor = albedo * iColorTint * mix(iCreviceDark, 1.0, depth);
 
     vec3 diffuse  = baseColor * (NdotL * 1.2 + 0.1);
     vec3 ambient  = envDiff * 0.4 * baseColor;
     vec3 specular = envSpec * spec * 0.06;
 
     col = (diffuse + ambient + specular) * occ;
-
-    float shadow = softShadow(p + n * 0.01, lightDir);
-    col *= shadow * 0.8 + 0.2;
+    col *= softShadow(p + n * 0.01, lightDir) * 0.8 + 0.2;
   }
 
   // Atmospheric fog — exponential falloff toward sky colour
@@ -262,56 +236,4 @@ vec3 renderScene(vec3 ro, vec3 rd) {
   }
 
   return col;
-}
-
-void main() {
-  vec2 uv = (gl_FragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
-
-  // Barrel lens distortion
-  if (iDistortion > 0.0001) {
-    uv *= 1.0 + iDistortion * dot(uv, uv);
-  }
-
-  vec3 ro = iCamPos;
-  // focal = 0.5 / tan(fov/2) — 0.5 matches UV normalised by height
-  float focal = 0.5 / tan(radians(iFov) * 0.5);
-  vec3 rd = normalize(iCamForward * focal + uv.x * iCamRight + uv.y * iCamUp);
-
-  vec3 col;
-
-  if (iAperture < 0.0001) {
-    col = renderScene(ro, rd);
-  } else {
-    vec3 focalPt = ro + rd * iFocalDist;
-    float phi = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * TAU;
-
-    col = vec3(0.0);
-    for (int s = 0; s < 8; s++) {
-      vec2 lens = diskSample(s, phi) * iAperture;
-      vec3 lro  = ro + iCamRight * lens.x + iCamUp * lens.y;
-      vec3 lrd  = normalize(focalPt - lro);
-      col += renderScene(lro, lrd);
-    }
-    col /= 8.0;
-  }
-
-  // Tonemapping + color grade + gamma
-  col *= iExposure;
-  col = col / (col + vec3(1.0));  // Reinhard
-  col *= vec3(1.0 + iWarmth, 1.0, 1.0 - iWarmth);  // color temperature
-  col = pow(clamp(col, 0.0, 1.0), vec3(0.4545));
-
-  // Vignette
-  if (iVignette > 0.0001) {
-    vec2 vuv = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0;
-    col *= 1.0 - iVignette * dot(vuv, vuv);
-  }
-
-  // Film grain (time-animated so it flickers per-frame)
-  if (iGrain > 0.0001) {
-    float grain = fract(sin(dot(gl_FragCoord.xy + iTime * 317.53, vec2(12.9898, 78.233))) * 43758.5453);
-    col += (grain - 0.5) * iGrain;
-  }
-
-  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
