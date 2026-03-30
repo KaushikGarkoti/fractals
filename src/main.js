@@ -8,11 +8,12 @@ import juliaWarp from './fractals/juliaWarp';
 import domainWarp  from './patterns/domainWarp';
 import waveField   from './patterns/waveField';
 import mandelbulb  from './patterns/mandelbulb';
+import sdfBlobs    from './patterns/sdfBlobs';
 
 // ─── Registries ───────────────────────────────────────────────────────────────
 
 const FRACTALS  = [mandelbrot, sierpinski, julia, juliaWarp];
-const PATTERNS  = [domainWarp, waveField, mandelbulb]; // domain warp, interference, etc. go here
+const PATTERNS  = [domainWarp, waveField, mandelbulb, sdfBlobs]; // domain warp, interference, etc. go here
 
 const ALL = [...FRACTALS, ...PATTERNS];
 

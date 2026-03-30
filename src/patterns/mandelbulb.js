@@ -66,6 +66,9 @@ export default createScene({
     iBailout:        { value: 2.0 },
     iMode:           { value: 0 },
     iJuliaC:         { value: new THREE.Vector3() },
+    iGlowStrength: { value: 0.0 },
+    iGlowFalloff:  { value: 5.0 },
+    iGlowColor:    { value: new THREE.Color(1.0, 0.3, 0.05) },
     // Camera / Look overrides (engine defaults differ)
     iFov:        { value: 90.0 },
     iExposure:   { value: 2.0 },
@@ -96,6 +99,13 @@ export default createScene({
       .onChange(v => { state.morphing = false; uniforms.iPower.value = v; });
     fractal.add(uniforms.iBailout, 'value', 1.0, 6.0, 0.1).name('Bailout');
     fractal.add(state, 'colorShift', 0.0, 1.0, 0.01).name('Color shift');
+
+    const emissive = gui.addFolder('Emissive');
+    emissive.add(uniforms.iGlowStrength, 'value', 0.0, 4.0, 0.05).name('Strength (0=off)');
+    emissive.add(uniforms.iGlowFalloff,  'value', 0.5, 20.0, 0.5).name('Falloff');
+    const glowProxy = { color: '#ff4d0d' };
+    emissive.addColor(glowProxy, 'color').name('Color').onChange(v => uniforms.iGlowColor.value.set(v));
+    emissive.close();
 
     const juliaFolder = gui.addFolder('Julia C');
     juliaFolder.add(julia, 'cx', -1.0, 1.0, 0.001).name('cx').listen();

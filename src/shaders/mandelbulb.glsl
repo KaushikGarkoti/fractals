@@ -20,6 +20,9 @@ uniform float     iSurfDist;
 uniform float     iBailout;
 uniform int       iMode;
 uniform vec3      iJuliaC;
+uniform float     iGlowStrength;
+uniform float     iGlowFalloff;
+uniform vec3      iGlowColor;
 
 #define MAX_STEPS 256
 #define SURF_DIST 0.0003
@@ -227,6 +230,12 @@ vec3 renderScene(vec3 ro, vec3 rd) {
 
     col = (diffuse + ambient + specular) * occ;
     col *= softShadow(p + n * 0.01, lightDir) * 0.8 + 0.2;
+
+    // Emissive — orbit trap near 0 = deepest crevices = hottest glow
+    if (iGlowStrength > 0.0001) {
+      float glow = exp(-res.y * iGlowFalloff);
+      col += iGlowColor * (glow * iGlowStrength);
+    }
   }
 
   // Atmospheric fog — exponential falloff toward sky colour
