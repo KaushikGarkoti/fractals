@@ -30,6 +30,21 @@ new RGBELoader().load(hdrUrl, (tex) => {
   uniforms.iEnvMap.value = tex;
 });
 
+const light = {
+  azimuth:   45,   // degrees, 0–360
+  elevation: 55,   // degrees, 0–90
+};
+
+function lightDir() {
+  const az = light.azimuth   * Math.PI / 180;
+  const el = light.elevation * Math.PI / 180;
+  return new THREE.Vector3(
+    Math.cos(el) * Math.sin(az),
+    Math.sin(el),
+    Math.cos(el) * Math.cos(az),
+  );
+}
+
 const cam = {
   theta:      0.4,      // horizontal angle (radians)
   phi:        0.3,      // vertical angle (radians)
@@ -58,6 +73,7 @@ const uniforms = {
   iResolution: { value: new THREE.Vector2() },
   iPower:      { value: state.power },
   iColorShift: { value: state.colorShift },
+  iLightDir:     { value: new THREE.Vector3(0.71, 0.84, 0.71) },
   iAlbedoMap:    { value: albedoMap },
   iNormalMap:    { value: normalMap },
   iRoughnessMap: { value: roughnessMap },
@@ -131,6 +147,7 @@ export default {
       state.power = 7.5 + drift; // range [6.5, 8.5] — stays in "solid ball" regime
     }
 
+    uniforms.iLightDir.value.copy(lightDir());
     uniforms.iPower.value      = state.power;
     uniforms.iColorShift.value = state.colorShift;
     uniforms.iMode.value       = state.mode;
@@ -191,6 +208,13 @@ export default {
     }
     return false;
   },
+
+  setLight(az, el) {
+    light.azimuth   = az;
+    light.elevation = el;
+  },
+
+  getLightState() { return { ...light }; },
 
   getHUD() {
     const c = uniforms.iJuliaC.value;

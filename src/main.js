@@ -129,9 +129,10 @@ function switchTo(fractal) {
   mesh.material = materials[fractal.name];
   fractal.init(window.innerWidth, window.innerHeight);
 
-  updatePresetDropdown(fractal); // 🔥 NEW
+  updatePresetDropdown(fractal);
   updateVariantDropdown(fractal);
   updateUI();
+  lightPanel.style.display = fractal.setLight ? 'flex' : 'none';
 }
 
 // ─── Dropdown ─────────────────────────────────────────────────────────────────
@@ -188,7 +189,7 @@ renderer.domElement.addEventListener('mousemove', (e) => {
   mouseX = e.clientX;
   mouseY = e.clientY;
   if (!isDragging) return;
-  current.pan(e.clientX - lastMouseX, e.clientY - lastMouseY, window.innerHeight);
+  current.pan?.(e.clientX - lastMouseX, e.clientY - lastMouseY, window.innerHeight);
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
   updateUI();
@@ -203,7 +204,7 @@ renderer.domElement.style.cursor = 'crosshair';
 renderer.domElement.addEventListener('wheel', (e) => {
   e.preventDefault();
   const factor = e.deltaY > 0 ? 0.88 : 1.0 / 0.88;
-  current.zoomToward(e.clientX, e.clientY, factor, window.innerWidth, window.innerHeight);
+  current.zoomToward?.(e.clientX, e.clientY, factor, window.innerWidth, window.innerHeight);
   updateUI();
 }, { passive: false });
 
@@ -230,7 +231,7 @@ renderer.domElement.addEventListener('touchmove', (e) => {
   e.preventDefault();
   const w = window.innerWidth, h = window.innerHeight;
   if (e.touches.length === 1 && isDragging) {
-    current.pan(e.touches[0].clientX - lastTouchX, e.touches[0].clientY - lastTouchY, h);
+    current.pan?.(e.touches[0].clientX - lastTouchX, e.touches[0].clientY - lastTouchY, h);
     lastTouchX = e.touches[0].clientX;
     lastTouchY = e.touches[0].clientY;
     updateUI();
@@ -240,7 +241,7 @@ renderer.domElement.addEventListener('touchmove', (e) => {
     const dist = Math.sqrt(dx * dx + dy * dy);
     const tcx  = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
     const tcy  = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
-    current.zoomToward(tcx, tcy, dist / lastPinchDist, w, h);
+    current.zoomToward?.(tcx, tcy, dist / lastPinchDist, w, h);
     lastPinchDist = dist;
     updateUI();
   }
@@ -278,6 +279,26 @@ const fpsEl = document.getElementById('fps');
 function updateUI() {
   uiEl.innerHTML = current.getHUD();
 }
+
+// ─── Light panel ──────────────────────────────────────────────────────────────
+
+const lightPanel  = document.getElementById('light-panel');
+const lightAzEl   = document.getElementById('light-az');
+const lightElEl   = document.getElementById('light-el');
+const lightAzVal  = document.getElementById('light-az-val');
+const lightElVal  = document.getElementById('light-el-val');
+
+lightPanel.style.display = current.setLight ? 'flex' : 'none';
+
+lightAzEl.addEventListener('input', () => {
+  lightAzVal.textContent = lightAzEl.value + '°';
+  current.setLight?.(Number(lightAzEl.value), Number(lightElEl.value));
+});
+
+lightElEl.addEventListener('input', () => {
+  lightElVal.textContent = lightElEl.value + '°';
+  current.setLight?.(Number(lightAzEl.value), Number(lightElEl.value));
+});
 
 // ─── FPS ──────────────────────────────────────────────────────────────────────
 

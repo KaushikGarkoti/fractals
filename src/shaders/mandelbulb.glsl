@@ -4,6 +4,7 @@ uniform vec2  iResolution;
 uniform float iTime;
 uniform float iPower;
 uniform float iColorShift;
+uniform vec3      iLightDir;
 uniform sampler2D iAlbedoMap;
 uniform sampler2D iNormalMap;
 uniform sampler2D iRoughnessMap;
@@ -17,8 +18,8 @@ uniform sampler2D iEnvMap;
 
 #define PI        3.14159265359
 #define TAU       6.28318530718
-#define MAX_STEPS 192
-#define SURF_DIST 0.0005
+#define MAX_STEPS 256
+#define SURF_DIST 0.0003
 #define MAX_DIST  14.0
 
 vec3 sampleHDR(vec3 dir) {
@@ -36,9 +37,10 @@ vec2 mandelbulbDE(vec3 pos) {
   float power = iPower;
   vec3  c     = (iMode == 1) ? iJuliaC : pos;
 
-  for (int i = 0; i < 32; i++) {
+  for (int i = 0; i < 20; i++) {
     r = length(z);
-    trap = min(trap, dot(z,z) * 0.5 + (abs(z.y) + abs(z.x) * 0.4) * 0.5);
+    float d = dot(z, z);
+    trap = min(trap, length(z));
     if (r > 2.0) break;
 
     float theta = acos(clamp(z.z / r, -1.0, 1.0));
@@ -52,7 +54,11 @@ vec2 mandelbulbDE(vec3 pos) {
     z = zr * vec3(sin(theta)*cos(phi), sin(phi)*sin(theta), cos(theta)) + c;
   }
 
-  return vec2(max(0.00005, 0.5 * log(r) * r / dr), trap);
+  float dist = 0.5 * log(r) * r / dr;
+  dist = max(dist, 0.00005);
+  dist *= 0.9;
+
+  return vec2(dist, trap);
 }
 
 vec3 march(vec3 ro, vec3 rd) {
@@ -64,7 +70,7 @@ vec3 march(vec3 ro, vec3 rd) {
     if (d < SURF_DIST) return vec3(t, trap, float(i));
     if (t > MAX_DIST)  break;
     // smaller step near surface prevents tunnelling through thin walls
-    t += d * (d < 0.01 ? 0.45 : 0.75);
+    t += d * 0.5;
   }
   return vec3(-1.0, trap, float(MAX_STEPS));
 }
@@ -88,7 +94,7 @@ float calcAO(vec3 p, vec3 n) {
     occ += w * (d - mandelbulbDE(p + n * d).x);
     w   *= 0.55;
   }
-  return clamp(1.0 - occ * 2.8, 0.0, 1.0);
+  return clamp(1.0 - occ * 1.5, 0.0, 1.0);
 }
 
 float softShadow(vec3 ro, vec3 rd) {
@@ -134,7 +140,7 @@ vec3 triplanarNormal(vec3 p, vec3 n, vec3 blend, float scale) {
 
   // scale down tangent offsets so geometric normal dominates, texture only perturbs
   vec3 mapped = wX * blend.x + wY * blend.y + wZ * blend.z;
-  return normalize(n + mapped * 0.4);
+  return normalize(n + mapped * 0.08);
 }
 
 vec3 orbitColor(float trap, float steps) {
@@ -163,7 +169,7 @@ void main() {
     vec3  p   = ro + rd * res.x;
 
     // smooth normals: average 3 sample points to suppress micro-bump flicker
-    const float nBlur = 0.003;
+    const float nBlur = 0.008;
     vec3 n1 = calcNormal(p);
     vec3 n2 = calcNormal(p + nBlur);
     vec3 n3 = calcNormal(p - nBlur);
@@ -172,16 +178,17 @@ void main() {
     float occ = calcAO(p, n);
 
     vec3  viewDir  = -rd;
-    vec3  lightDir = normalize(vec3(1.0, 1.5, 0.8));
+    vec3  lightDir = normalize(iLightDir);
     vec3  halfDir  = normalize(lightDir + viewDir);
 
     // triplanar blend weights (shared by all texture samples)
-    vec3 tblend = blend3(n);
-    float tScale = 0.8;
-    vec3  tPos   = p * 0.5;
+    vec3 tblend = pow(abs(n), vec3(4.0));
+    tblend /= (tblend.x + tblend.y + tblend.z);
+    float tScale = 6.0;
+    vec3 tPos = p * 0.3;
 
-    // normal map — perturb the smoothed geometric normal
-    n = triplanarNormal(tPos, n, tblend, tScale);
+    // normal map disabled
+    // n = triplanarNormal(tPos, n, tblend, tScale);
 
     float NdotL = max(dot(n, lightDir), 0.0);
 
@@ -197,18 +204,21 @@ void main() {
     vec3 envDiff = sampleHDR(n);
 
     vec3 baseColor = orbitColor(res.y, res.z);
+    float macro = sin(p.x * 0.5) * sin(p.y * 0.5) * sin(p.z * 0.5);
+    baseColor *= 0.9 + 0.1 * macro;
 
-    // use albedo luminance only — adds surface value variation without shifting hue
-    vec3  albedo    = triplanarAlbedo(tPos, tblend, tScale);
-    float albedoLum = dot(albedo, vec3(0.299, 0.587, 0.114));
-    baseColor *= mix(0.8, 1.15, albedoLum);
+    vec3 albedo = triplanarAlbedo(tPos, tblend, tScale);
+    baseColor = albedo;
 
     float cavity = smoothstep(0.0, 1.0, res.y * 0.2);
     baseColor *= 0.8 + 0.2 * cavity;
 
-    baseColor *= mix(0.85, 1.15, fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453));
+    float variation = smoothstep(0.0, 1.0, res.y * 0.3);
+    baseColor *= mix(0.9, 1.1, variation);
 
-    vec3 diffuse  = baseColor * (NdotL * 1.4 + 0.05);
+    //baseColor *= mix(0.85, 1.15, fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453));
+
+    vec3 diffuse  = baseColor * (NdotL * 1.1 + 0.05);
     vec3 specular = envSpec * spec * 0.15;
 
     float fresnel = pow(1.0 - max(dot(viewDir, n), 0.0), 5.0);
@@ -217,7 +227,7 @@ void main() {
     col = diffuse * (1.0 - spec) + specular;
 
     vec3 ambient = envDiff * 0.35 * baseColor;
-    col = (col + ambient) * occ * 1.3;
+    col = (col + ambient) * occ * 1.1;
 
     col *= mix(0.7, 1.0, exp(-res.x * 2.0));
     col *= 0.8 + 0.2 * smoothstep(0.0, 1.0, res.x * 0.5);

@@ -99,6 +99,64 @@
       background: #111;
       color: rgba(120, 220, 255, 0.9);
     }
+
+    /* ── Light controls panel ── */
+    #light-panel {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      padding: 10px 14px;
+      backdrop-filter: blur(6px);
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 1px;
+      min-width: 180px;
+    }
+
+    #light-panel .panel-title {
+      color: rgba(255,255,255,0.6);
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    #light-panel label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #light-panel input[type=range] {
+      -webkit-appearance: none;
+      width: 110px;
+      height: 3px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    #light-panel input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(120, 220, 255, 0.9);
+      cursor: pointer;
+    }
+
+    #light-panel .val {
+      color: rgba(120, 220, 255, 0.9);
+      width: 30px;
+      text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -108,6 +166,20 @@
   <div id="selector">
     <label>Scene</label>
     <select id="fractal-select"></select>
+  </div>
+
+  <div id="light-panel">
+    <div class="panel-title">Light</div>
+    <label>
+      Az
+      <input type="range" id="light-az" min="0" max="360" value="45" step="1">
+      <span class="val" id="light-az-val">45°</span>
+    </label>
+    <label>
+      El
+      <input type="range" id="light-el" min="0" max="90" value="55" step="1">
+      <span class="val" id="light-el-val">55°</span>
+    </label>
   </div>
 
   <script type="module" src="/src/main.js"></script>
